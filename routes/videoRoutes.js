@@ -5,7 +5,6 @@ const ensureAdmin = require("../middleware/ensureAdmin");
 const videoController = require("../controllers/videoController");
 
 router.post("/", auth, ensureAdmin, videoController.createVideo);
-router.get("/", auth, ensureAdmin, videoController.getVideos);
 router.put("/:id", auth, ensureAdmin, videoController.updateVideo);
 router.delete("/:id", auth, ensureAdmin, videoController.deleteVideo);
 

@@ -30,19 +30,6 @@ exports.createPlaylist = async (req, res) => {
   }
 };
 
-//
-// 📂 Obtener todas las playlists del usuario autenticado
-//
-exports.getPlaylists = async (req, res) => {
-  try {
-    // Buscar todas las playlists donde el userId coincida con el del token
-    const playlists = await Playlist.find({ userId: req.user.id });
-    res.status(200).json(playlists); // Devolver lista de playlists
-  } catch (error) {
-    console.error("Error fetching playlists:", error);
-    res.status(500).json({ message: "Server error." });
-  }
-};
 
 //
 // ✏️ Actualizar una playlist existente

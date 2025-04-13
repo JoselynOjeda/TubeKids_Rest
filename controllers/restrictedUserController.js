@@ -1,20 +1,6 @@
 const RestrictedUser = require('../models/restrictedModel');
 
 //
-// 👤 Obtener todos los perfiles restringidos asociados a un usuario administrador
-//
-exports.getAllRestrictedUsers = async (req, res) => {
-  try {
-    // Buscar todos los perfiles cuyo `parentUser` coincida con el ID del admin autenticado
-    const restrictedUsers = await RestrictedUser.find({ parentUser: req.user.id });
-    res.status(200).json(restrictedUsers);
-  } catch (error) {
-    console.error("Failed to retrieve restricted users:", error);
-    res.status(500).json({ message: 'Error retrieving restricted users', error: error.message });
-  }
-};
-
-//
 // ➕ Crear un nuevo perfil restringido
 //
 exports.addRestrictedUser = async (req, res) => {
