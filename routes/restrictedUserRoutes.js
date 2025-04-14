@@ -7,4 +7,5 @@ router.post('/', auth, restrictedUserController.addRestrictedUser);
 router.put('/:id', auth, restrictedUserController.updateRestrictedUser);
 router.delete('/:id', auth, restrictedUserController.deleteRestrictedUser);
 
+
 module.exports = router;

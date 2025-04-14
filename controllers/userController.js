@@ -1,30 +1,26 @@
 const User = require('../models/userModel');
 const jwt = require('jsonwebtoken');
-const bcrypt = require('bcryptjs'); // Para hashear y comparar contraseñas
+const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
+const { sendVerificationEmail } = require('../mailer');
 
-//
-// 🔐 Función para generar un token JWT
-//
+// Función para generar token
 const generateToken = (user) => {
   const payload = {
     id: user._id,
     email: user.email,
     name: user.name,
     pin: user.pin,
-    role: "admin" // Todos los usuarios registrados son administradores por defecto
+    role: "admin"
   };
 
-  // Firmar el token con una clave secreta y expiración de 90 días
   return jwt.sign(payload, "tube_kids", { expiresIn: '90d' });
 };
 
-//
-// 📥 Registro de un nuevo usuario
-//
+// 📥 Registro
 exports.signup = async (req, res) => {
   const { email, password, phone, pin, name, surname, country, birthDate } = req.body;
 
-  // 🧓 Verificar que el usuario tenga al menos 18 años
   const today = new Date();
   const birthDateObj = new Date(birthDate);
   let age = today.getFullYear() - birthDateObj.getFullYear();
@@ -38,21 +34,16 @@ exports.signup = async (req, res) => {
   }
 
   try {
-    // Verificar si el email ya está registrado
     const existingUser = await User.findOne({ email });
     if (existingUser) {
       return res.status(400).json({ message: 'Email is already in use' });
     }
 
-    // 🔐 Hashear la contraseña antes de guardarla
     const salt = await bcrypt.genSalt(12);
     const hashedPassword = await bcrypt.hash(password, salt);
 
-    console.log("🔐 Contraseña original:", password);
-    console.log("🧂 Salt generado:", salt);
-    console.log("🔒 Contraseña hasheada:", hashedPassword);
+    const verificationToken = crypto.randomBytes(32).toString("hex");
 
-    // Crear el nuevo usuario en la base de datos
     const newUser = await User.create({
       email,
       password: hashedPassword,
@@ -61,29 +52,16 @@ exports.signup = async (req, res) => {
       name,
       surname,
       country,
-      birthDate
+      birthDate,
+      isVerified: false,
+      verificationToken
     });
 
-    // Generar token JWT para iniciar sesión automáticamente después del registro
-    const token = generateToken(newUser);
+    await sendVerificationEmail(newUser.email, verificationToken);
 
-    console.log("✅ Usuario registrado con éxito:", email);
-
-    // Enviar respuesta sin incluir la contraseña
     res.status(201).json({
-      status: 'success',
-      token,
-      data: {
-        user: {
-          id: newUser._id,
-          email: newUser.email,
-          name: newUser.name,
-          surname: newUser.surname,
-          phone: newUser.phone,
-          country: newUser.country,
-          birthDate: newUser.birthDate,
-        }
-      }
+      status: 'pending',
+      message: 'Registration successful! Please check your email to verify your account.'
     });
   } catch (error) {
     console.error("❌ Error durante el registro:", error);
@@ -91,55 +69,36 @@ exports.signup = async (req, res) => {
   }
 };
 
-//
-// 🔓 Inicio de sesión de usuario
-//
+// 🔓 Login
 exports.login = async (req, res) => {
   const { email, password } = req.body;
 
-  // Verificar que se hayan enviado ambos campos
   if (!email || !password) {
-    console.log("⚠️ Falta email o contraseña en la solicitud.");
     return res.status(400).json({ message: 'Please provide email and password!' });
   }
 
   try {
-    console.log(`🔍 Buscando usuario con email: ${email}`);
-
-    // Buscar usuario por email y recuperar el campo `password` explícitamente
     const user = await User.findOne({ email }).select('+password');
 
     if (!user) {
-      console.log("❌ Usuario no encontrado:", email);
       return res.status(401).json({ message: 'Incorrect email or password' });
     }
 
-    console.log("User object:", user);
-    console.log("🟢 Usuario encontrado:", user.email);
-    console.log("🔑 Contraseña ingresada:", password);
-    console.log("🔒 Contraseña almacenada (hash en la BD):", user.password);
+    if (!user.isVerified) {
+      return res.status(403).json({ message: 'Please verify your email before logging in.' });
+    }
 
-    // Comparar contraseña ingresada con el hash guardado en la base de datos
     bcrypt.compare(password, user.password, (err, isMatch) => {
       if (err) {
-        console.error("❌ Error comparando contraseñas:", err);
         return res.status(500).json({ message: 'Error comparing passwords' });
       }
 
-      console.log(`🔄 Comparación bcrypt: ${isMatch}`);
-
       if (!isMatch) {
-        console.log("❌ Contraseña incorrecta");
         return res.status(401).json({ message: 'Incorrect email or password' });
       }
 
-      console.log("✅ Contraseña correcta, generando token...");
-
-      // Generar token de sesión
       const token = generateToken(user);
-      console.log("🔐 Token generado:", token);
 
-      // Enviar datos del usuario (sin contraseña)
       res.status(200).json({
         status: 'success',
         token,
@@ -158,7 +117,28 @@ exports.login = async (req, res) => {
     });
 
   } catch (error) {
-    console.error("❌ Error durante el login:", error);
     res.status(500).json({ message: 'Error logging in', error });
+  }
+};
+
+// ✅ Verificación de email
+exports.verifyEmail = async (req, res) => {
+  const { token } = req.params;
+
+  try {
+    const user = await User.findOne({ verificationToken: token });
+
+    if (!user) {
+      return res.status(400).json({ message: 'Invalid or expired verification token.' });
+    }
+
+    user.isVerified = true;
+    user.verificationToken = undefined;
+    await user.save();
+
+    return res.redirect('http://localhost:3000'); // o la URL de tu frontend
+  } catch (error) {
+    console.error('❌ Error verifying email:', error);
+    res.status(500).json({ message: 'Error verifying email.' });
   }
 };

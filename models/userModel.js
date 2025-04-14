@@ -3,13 +3,15 @@ const bcrypt = require('bcryptjs');
 
 const userSchema = new mongoose.Schema({
   email: { type: String, required: true, unique: true },
-  password: { type: String, required: true },
+  password: { type: String, required: true, select: false },
   phone: { type: String, required: true },
-  pin: { type: String, required: true, minlength: 6, maxlength: 6 },
-  name: { type: String, required: true },
-  surname: { type: String, required: true },
+  pin: { type: String },
+  name: String,
+  surname: String,
   country: String,
-  birthDate: { type: Date, required: true }
+  birthDate: Date,
+  isVerified: { type: Boolean, default: false },
+  verificationToken: { type: String }
 });
 
 userSchema.methods.correctPassword = async function(candidatePassword, userPassword) {
