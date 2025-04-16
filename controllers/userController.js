@@ -2,9 +2,12 @@ const User = require('../models/userModel');
 const jwt = require('jsonwebtoken');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
-const { sendVerificationEmail } = require('../mailer');
+const { sendVerificationEmail } = require('../utils/mailer');
+const twilioClient = require('../utils/twilioService');
 
-// Función para generar token
+const verificationCodes = new Map();
+
+// Función para generar token JWT
 const generateToken = (user) => {
   const payload = {
     id: user._id,
@@ -17,7 +20,7 @@ const generateToken = (user) => {
   return jwt.sign(payload, "tube_kids", { expiresIn: '90d' });
 };
 
-// 📥 Registro
+// Registro
 exports.signup = async (req, res) => {
   const { email, password, phone, pin, name, surname, country, birthDate } = req.body;
 
@@ -69,7 +72,7 @@ exports.signup = async (req, res) => {
   }
 };
 
-// 🔓 Login
+// Login con 2FA (envío SMS)
 exports.login = async (req, res) => {
   const { email, password } = req.body;
 
@@ -85,43 +88,70 @@ exports.login = async (req, res) => {
     }
 
     if (!user.isVerified) {
-      return res.status(403).json({ message: 'Please verify your email before logging in.' });
+      return res.status(403).json({ message: 'Please verify your email before logging in.', userId: user._id });
     }
 
-    bcrypt.compare(password, user.password, (err, isMatch) => {
-      if (err) {
-        return res.status(500).json({ message: 'Error comparing passwords' });
-      }
+    const isMatch = await bcrypt.compare(password, user.password);
+    if (!isMatch) {
+      return res.status(401).json({ message: 'Incorrect email or password' });
+    }
 
-      if (!isMatch) {
-        return res.status(401).json({ message: 'Incorrect email or password' });
-      }
+    // Generar código SMS
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    verificationCodes.set(user._id.toString(), code);
 
-      const token = generateToken(user);
+    await twilioClient.sendSMSCode(user.phone, code);
 
-      res.status(200).json({
-        status: 'success',
-        token,
-        data: {
-          user: {
-            id: user._id,
-            email: user.email,
-            name: user.name,
-            surname: user.surname,
-            phone: user.phone,
-            country: user.country,
-            birthDate: user.birthDate,
-          }
-        }
-      });
+    return res.status(200).json({
+      status: 'pending',
+      message: 'Verification code sent via SMS',
+      userId: user._id,
+      requiresVerification: true 
     });
 
   } catch (error) {
+    console.error("❌ Error en login:", error); 
     res.status(500).json({ message: 'Error logging in', error });
   }
 };
 
-// ✅ Verificación de email
+
+// Confirmación del código SMS
+exports.verifySmsCode = async (req, res) => {
+  const { userId, code } = req.body;
+  const storedCode = verificationCodes.get(userId);
+
+  if (!storedCode || storedCode !== code) {
+    return res.status(400).json({ message: 'Invalid verification code' });
+  }
+
+  try {
+    const user = await User.findById(userId);
+    const token = generateToken(user);
+
+    verificationCodes.delete(userId);
+
+    res.status(200).json({
+      status: 'success',
+      token,
+      data: {
+        user: {
+          id: user._id,
+          email: user.email,
+          name: user.name,
+          surname: user.surname,
+          phone: user.phone,
+          country: user.country,
+          birthDate: user.birthDate,
+        }
+      }
+    });
+  } catch (error) {
+    res.status(500).json({ message: 'Error verifying code', error });
+  }
+};
+
+// Verificación de email
 exports.verifyEmail = async (req, res) => {
   const { token } = req.params;
 
@@ -136,7 +166,7 @@ exports.verifyEmail = async (req, res) => {
     user.verificationToken = undefined;
     await user.save();
 
-    return res.redirect('http://localhost:3000'); // o la URL de tu frontend
+    return res.redirect('http://localhost:3000');
   } catch (error) {
     console.error('❌ Error verifying email:', error);
     res.status(500).json({ message: 'Error verifying email.' });

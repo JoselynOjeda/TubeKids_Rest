@@ -11,7 +11,12 @@ const userSchema = new mongoose.Schema({
   country: String,
   birthDate: Date,
   isVerified: { type: Boolean, default: false },
-  verificationToken: { type: String }
+  verificationToken: { type: String },
+
+   // 🔐 Para la verificación con código SMS (2FA)
+   smsCode: { type: String },
+   smsCodeExpires: { type: Date }
+
 });
 
 userSchema.methods.correctPassword = async function(candidatePassword, userPassword) {
