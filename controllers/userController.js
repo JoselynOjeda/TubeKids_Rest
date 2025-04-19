@@ -5,7 +5,7 @@ const crypto = require('crypto');
 const { sendVerificationEmail } = require('../utils/mailer');
 const twilioClient = require('../utils/twilioService');
 
-const verificationCodes = new Map();
+const verificationCodes = require('../utils/smsStore');
 
 // Función para generar token JWT
 const generateToken = (user) => {
@@ -119,7 +119,13 @@ exports.login = async (req, res) => {
 // Confirmación del código SMS
 exports.verifySmsCode = async (req, res) => {
   const { userId, code } = req.body;
+
+  console.log("🔐 Verificando código SMS...");
+  console.log("➡️ userId:", userId);
+  console.log("➡️ Código recibido:", code);
+
   const storedCode = verificationCodes.get(userId);
+  console.log("🧠 Código guardado:", storedCode);
 
   if (!storedCode || storedCode !== code) {
     return res.status(400).json({ message: 'Invalid verification code' });
@@ -131,7 +137,7 @@ exports.verifySmsCode = async (req, res) => {
 
     verificationCodes.delete(userId);
 
-    res.status(200).json({
+    return res.status(200).json({
       status: 'success',
       token,
       data: {
@@ -147,9 +153,11 @@ exports.verifySmsCode = async (req, res) => {
       }
     });
   } catch (error) {
+    console.error("❌ Error verifying code:", error);
     res.status(500).json({ message: 'Error verifying code', error });
   }
 };
+
 
 // Verificación de email
 exports.verifyEmail = async (req, res) => {
@@ -172,3 +180,89 @@ exports.verifyEmail = async (req, res) => {
     res.status(500).json({ message: 'Error verifying email.' });
   }
 };
+
+exports.completeGoogleProfile = async (req, res) => {
+  const token = req.headers.authorization?.split(' ')[1];
+  if (!token) return res.status(401).json({ message: 'No token provided' });
+
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || "tube_kids");
+    const userId = decoded.id;
+    const { birthDate } = req.body;
+
+    if (birthDate) {
+      const today = new Date();
+      const birthDateObj = new Date(birthDate);
+      let age = today.getFullYear() - birthDateObj.getFullYear();
+      const m = today.getMonth() - birthDateObj.getMonth();
+      if (m < 0 || (m === 0 && today.getDate() < birthDateObj.getDate())) {
+        age--;
+      }
+      if (age < 18) return res.status(400).json({ message: 'You must be at least 18 years old.' });
+      req.body.age = age;
+    }
+
+    const updatedUser = await User.findByIdAndUpdate(userId, { ...req.body }, { new: true });
+
+    // 🔥 Si aún no está verificado, generar token y mandar correo
+    if (!updatedUser.isVerified) {
+      if (!updatedUser.verificationToken) {
+        updatedUser.verificationToken = crypto.randomBytes(32).toString("hex");
+        await updatedUser.save();
+      }
+      await sendVerificationEmail(updatedUser.email, updatedUser.verificationToken);
+    }
+
+    return res.status(200).json({ message: "Profile completed", emailSent: !updatedUser.isVerified });
+  } catch (err) {
+    console.error("Error completing profile:", err);
+    return res.status(400).json({ message: 'Invalid token or update failed' });
+  }
+};
+
+exports.getMe = async (req, res) => {
+  const token = req.headers.authorization?.split(' ')[1];
+  if (!token) return res.status(401).json({ message: "Token missing" });
+
+  try {
+    const decoded = jwt.verify(token, process.env.JWT_SECRET || "tube_kids");
+    const user = await User.findById(decoded.id).select("-password");
+
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
+
+    return res.status(200).json(user);
+  } catch (error) {
+    console.error("❌ Error fetching user:", error);
+    return res.status(400).json({ message: "Invalid token" });
+  }
+
+};
+
+exports.resendCode = async (req, res) => {
+  const { userId } = req.body;
+
+  if (!userId) {
+    return res.status(400).json({ message: "User ID is required" });
+  }
+
+  try {
+    const user = await User.findById(userId);
+    if (!user || !user.phone) {
+      return res.status(404).json({ message: "User not found or missing phone number" });
+    }
+
+    const code = Math.floor(100000 + Math.random() * 900000).toString();
+    verificationCodes.set(userId, code);
+    await sendSMSCode(user.phone, code);
+
+    return res.status(200).json({ message: "Code resent" });
+  } catch (error) {
+    console.error("❌ Error resending code:", error);
+    return res.status(500).json({ message: "Internal server error" });
+  }
+};
+
+
+

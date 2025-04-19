@@ -3,7 +3,10 @@ const mongoose = require("mongoose");
 const cors = require("cors");
 const bodyParser = require("body-parser");
 const authenticate = require('./middleware/authenticate');
+const passport = require("passport")
 require("dotenv").config();
+require("./auth/google")
+
 
 const app = express();
 
@@ -32,9 +35,10 @@ const userRoutes = require("./routes/userRoutes");
 const restrictedUserRoutes = require('./routes/restrictedUserRoutes');
 const playlistRoutes = require("./routes/playlistRoutes");
 const videoRoutes = require("./routes/videoRoutes");
+const completeProfileRoute = require("./routes/completeProfileRoute");
 
 // Usar rutas
-
+app.use("/api/users", require("./routes/googleAuth"))
 app.use("/api/users", userRoutes);
 app.use('/api/restricted-users', authenticate, restrictedUserRoutes);
 app.use("/api/videos", videoRoutes);
