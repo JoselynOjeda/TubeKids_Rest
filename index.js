@@ -36,6 +36,7 @@ const restrictedUserRoutes = require('./routes/restrictedUserRoutes');
 const playlistRoutes = require("./routes/playlistRoutes");
 const videoRoutes = require("./routes/videoRoutes");
 const completeProfileRoute = require("./routes/completeProfileRoute");
+const youtubeRoutes = require("./routes/youtube");
 
 // Usar rutas
 app.use("/api/users", require("./routes/googleAuth"))
@@ -44,6 +45,7 @@ app.use('/api/restricted-users', authenticate, restrictedUserRoutes);
 app.use("/api/videos", videoRoutes);
 app.use("/api/playlists", playlistRoutes);
 app.use("/api/countries", countryRoutes);
+app.use("/api/youtube", youtubeRoutes);
 
 // Iniciar servidor
 const PORT = process.env.PORT || 5000;
