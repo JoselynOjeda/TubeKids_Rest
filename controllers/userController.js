@@ -24,28 +24,14 @@ const generateToken = (user) => {
 exports.signup = async (req, res) => {
   const { email, password, phone, pin, name, surname, country, birthDate } = req.body;
 
-  const today = new Date();
-  const birthDateObj = new Date(birthDate);
-  let age = today.getFullYear() - birthDateObj.getFullYear();
-  const m = today.getMonth() - birthDateObj.getMonth();
-  if (m < 0 || (m === 0 && today.getDate() < birthDateObj.getDate())) {
-    age--;
-  }
-
-  if (age < 18) {
-    return res.status(400).json({ message: 'You must be at least 18 years old to register.' });
-  }
-
   try {
     const existingUser = await User.findOne({ email });
     if (existingUser) {
       return res.status(400).json({ message: 'Email is already in use' });
     }
 
-    const salt = await bcrypt.genSalt(12);
-    const hashedPassword = await bcrypt.hash(password, salt);
-
-    const verificationToken = crypto.randomBytes(32).toString("hex");
+    const hashedPassword = await bcrypt.hash(password, 12);
+    const verificationToken = crypto.randomBytes(32).toString('hex');
 
     const newUser = await User.create({
       email,
@@ -60,17 +46,20 @@ exports.signup = async (req, res) => {
       verificationToken
     });
 
-    await sendVerificationEmail(newUser.email, verificationToken);
+    
+    await sendVerificationEmail(newUser.email, newUser.verificationToken);
 
     res.status(201).json({
       status: 'pending',
-      message: 'Registration successful! Please check your email to verify your account.'
+      message: 'User created and verification email sent',
     });
   } catch (error) {
-    console.error("❌ Error durante el registro:", error);
+    console.error("❌ Error during signup:", error);
     res.status(500).json({ message: 'Error signing up user', error });
   }
 };
+
+
 
 // Login con 2FA (envío SMS)
 exports.login = async (req, res) => {
@@ -161,25 +150,51 @@ exports.verifySmsCode = async (req, res) => {
 
 // Verificación de email
 exports.verifyEmail = async (req, res) => {
-  const { token } = req.params;
+  const token = decodeURIComponent(req.params.token);
+
+  if (!token) {
+    return res.status(400).json({ message: "Token missing" });
+  }
+
+  console.log("🚀 Iniciando verificación de email...");
+  console.log("📦 Token recibido:", token);
 
   try {
     const user = await User.findOne({ verificationToken: token });
 
     if (!user) {
-      return res.status(400).json({ message: 'Invalid or expired verification token.' });
+      
+      const verifiedUser = await User.findOne({ isVerified: true, verificationToken: { $exists: false } });
+
+      if (verifiedUser) {
+        console.log("🔵 Usuario ya estaba verificado");
+        return res.status(200).json({ alreadyVerified: true, message: 'Email was already verified.' });
+      }
+
+      console.log("🔴 Token inválido o usuario no encontrado");
+      return res.status(400).json({ message: 'Invalid or expired token.' });
     }
 
     user.isVerified = true;
     user.verificationToken = undefined;
     await user.save();
 
-    return res.redirect('http://localhost:3000');
+    console.log("✅ Usuario verificado correctamente");
+    return res.status(200).json({ message: 'Email successfully verified!' });
+
   } catch (error) {
     console.error('❌ Error verifying email:', error);
-    res.status(500).json({ message: 'Error verifying email.' });
+    return res.status(500).json({ message: 'Error verifying email.' });
   }
 };
+
+
+
+
+
+
+
+
 
 exports.completeGoogleProfile = async (req, res) => {
   const token = req.headers.authorization?.split(' ')[1];

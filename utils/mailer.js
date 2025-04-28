@@ -1,37 +1,36 @@
 const axios = require('axios');
+require('dotenv').config();
+
+const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:3000"; // 🔥
 
 const sendVerificationEmail = async (toEmail, token) => {
   try {
-    const response = await axios.post(
+    await axios.post(
       'https://api.mailersend.com/v1/email',
       {
         from: {
           email: 'noreply@test-zxk54v8zde6ljy6v.mlsender.net',
           name: 'TubeKids'
         },
-        to: [
-          {
-            email: toEmail,
-            name: 'New User'
-          }
-        ],
+        to: [{ email: toEmail, name: "New User" }],
         subject: 'Verify your email',
         html: `
           <p>Hello! Please verify your email address by clicking the link below:</p>
-          <a href="http://localhost:5000/api/users/verify/${token}">Verify Email</a>
+          <a href="${FRONTEND_URL}/verify-email/${encodeURIComponent(token)}">Verify Email</a>
         `
       },
       {
         headers: {
-          Authorization: `Bearer mlsn.5d9c1272a28d93a41d889168fdcc3b1f4ee254340719071c9436a4f9abdfc042`,
-          'Content-Type': 'application/json'
+          Authorization: `Bearer ${process.env.MAILERSEND_API_KEY}`,
+          "Content-Type": "application/json"
         }
       }
     );
 
-    console.log("✅ Email sent successfully", response.data);
+    console.log("✅ Email sent successfully");
   } catch (error) {
     console.error("❌ Error sending verification email:", error.response?.data || error.message);
+    throw error;
   }
 };
 
